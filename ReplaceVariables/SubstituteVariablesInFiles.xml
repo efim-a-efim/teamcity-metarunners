@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<meta-runner name="Substitute variables in files">
+  <description>Substitute TeamCity system.* variables in files</description>
+  <settings>
+    <parameters>
+      <param name="meta_Files" value="" spec="text description='Files list, one per line' validationMode='not_empty' label='Files' display='normal'" />
+      <param name="meta_Parameters" value="" spec="text description='Name =&gt; Value' validationMode='any' label='Additional variables' display='normal'" />
+    </parameters>
+    <build-runners>
+      <runner name="Substitute variables" type="jetbrains_powershell">
+        <parameters>
+          <param name="jetbrains_powershell_bitness" value="x64" />
+          <param name="jetbrains_powershell_execution" value="PS1" />
+          <param name="jetbrains_powershell_script_code"><![CDATA[Set-Location -Path '%teamcity.build.workingDir%'
+Write-Host "Attempting to set buffer width to 500 characters..." -NoNewline
+try {
+    $rawUI = (Get-Host).UI.RawUI
+    $m = $rawUI.MaxPhysicalWindowSize.Width
+    $rawUI.BufferSize = New-Object Management.Automation.Host.Size ([Math]::max($m, 500), $rawUI.BufferSize.Height)
+    $rawUI.WindowSize = New-Object Management.Automation.Host.Size ($m, $rawUI.WindowSize.Height)
+    Write-Host " Success"
+} catch {
+    Write-Host " Failed"
+}
+
+[xml]$doc = Get-Content -LiteralPath ($env:TEAMCITY_BUILD_PROPERTIES_FILE + '.xml') -Encoding UTF8
+$parameters = $doc.properties.entry | ForEach-Object -Begin {$ret = @{}} -Process {$ret.Add($_.key, $_.InnerText)} -End {$ret}
+
+@'
+%meta_Parameters%
+'@ -split '[\r|\n]' | Where-Object {$_ -notmatch '^[\s|\r|\n]*$'} | foreach-object { 
+    ($var, $value)=$($_ -split '\s*=>\s*',2,"RegexMatch,IgnoreCase,Multiline");  
+    $parameters[$var] = $value
+}
+
+Write-Host "##teamcity[blockOpened name='Available variables']"
+$parameters
+Write-Host "##teamcity[blockClosed name='Available variables']"
+
+@'
+%meta_Files%
+'@ -split '[\r|\n]' | Where-Object {$_ -notmatch '^[\s|\r|\n]*$'} | foreach-object {
+	resolve-path $_ | foreach-object { 
+		Write-Host "##teamcity[blockOpened name='File $_']"
+		$content = (Get-Content -Path $_) -join "`n"
+		foreach ($k in $parameters.Keys){
+			if ($content -match '#{'+$k+'}') {
+				Write-Host "Variable $k"
+				$content = $content.Replace('#{'+$k+'}', $parameters[$k])
+			}
+		}
+		$content | Set-Content -Path $_
+		Write-Host "##teamcity[blockClosed name='File $_']"
+	}
+}]]></param>
+          <param name="jetbrains_powershell_script_mode" value="CODE" />
+          <param name="teamcity.step.mode" value="default" />
+        </parameters>
+      </runner>
+    </build-runners>
+    <requirements />
+  </settings>
+</meta-runner>
+

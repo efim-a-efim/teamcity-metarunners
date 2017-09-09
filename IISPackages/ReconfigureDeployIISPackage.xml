@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<meta-runner name="Reconfigue and Deploy IIS package">
+  <description>Reconfigure IIS package and deploys it</description>
+  <settings>
+    <parameters>
+      <param name="SourcePackage" value="" spec="text display='normal' label='Source package' regexp='.*$' validationMessage='Please specify a valid ZIP file' validationMode='regex'" />
+      <param name="SkipIfNotExists" value="true" spec="checkbox checkedValue='true' uncheckedValue='' display='normal' label='Skip non-existing package' description='If unchecked, error will be reported for non-existent package'" />
+	  <param name="DestinationURL" value="" spec="text description='One URL per line' display='normal' label='IIS deploy URLs' validationMode='not_empty'" />
+      <param name="DestinationUser" value="" spec="text display='normal' label='Username' validationMode='any'" />
+      <param name="DestinationPassword" value="" spec="text display='normal' label='Password' validationMode='any'" />
+      <param name="DestinationType" value="auto" spec="select data_1='auto' data_11='iisApp' data_3='dirPath' data_5='filePath' data_7='package' data_9='runCommand' display='normal' label='Destination provider (type)' label_1='(Same as Source)' label_11='IIS Application' label_3='Directory' label_5='File' label_7='Package' label_9='Command' data_12='appHostConfig' label_12='Application Host Config'" />
+      <param name="DestinationParams" value="" spec="text description='Depend on destination type' display='normal' label='Destination parameters' validationMode='any'" />
+      <param name="Parameters" value="" spec="text description='Multi-line, use form Name =&gt; Value' display='normal' label='Parameters list' validationMode='any'" />
+	  <param name="ConfigurationContent" value="&lt;parameters /&gt;" spec="text description='XML format like setParameters or declareParameters file for MSDeploy' display='normal' label='Configuration for package' validationMode='not_empty'" />
+      <param name="UsePreSync" value="false" spec="checkbox checkedValue='true' uncheckedValue='false' display='normal' label='Use PreSync script'" />
+      <param name="PreSync" value="" spec="text display='normal' label='PreSync script' validationMode='any'" />
+      <param name="PresyncWait" value="20000" spec="text display='normal' description='In miliseconds' label='PreSync script wait interval' validationMode='any'" />
+      <param name="UsePostSync" value="false" spec="checkbox checkedValue='true' uncheckedValue='false' display='normal' label='Use PostSync script'" />
+      <param name="PostSync" value="" spec="text display='normal' label='PostSync script' validationMode='any'" />
+      <param name="PostsyncWait" value="20000" spec="text display='normal' description='In miliseconds' label='PostSync script wait interval' validationMode='any'" />
+      <param name="MSDeployParameters" value="" spec="text display='normal' label='Additional MSDeploy parameters'" />
+    </parameters>
+    <build-runners>
+      <runner name="Create config file" type="Ant">
+        <parameters>
+          <param name="build-file">&lt;project name="Create file"&gt;
+
+&lt;target name="echo"&gt;
+&lt;echo file="%system.teamcity.build.tempDir%\%teamcity.build.id%.%build.number%.xml"&gt;&lt;![CDATA[%ConfigurationContent%]]&gt;&lt;/echo&gt;
+&lt;/target&gt;
+
+&lt;/project&gt;</param>
+          <param name="build-file-path" value="build.xml" />
+          <param name="target" value="echo" />
+          <param name="teamcity.coverage.emma.include.source" value="true" />
+          <param name="teamcity.coverage.emma.instr.parameters" value="-ix -*Test*" />
+          <param name="teamcity.coverage.idea.includePatterns" value="*" />
+          <param name="teamcity.step.mode" value="default" />
+          <param name="use-custom-build-file" value="true" />
+        </parameters>
+      </runner>
+      <runner name="Create pre-sync file" type="Ant">
+        <parameters>
+          <param name="build-file">&lt;project name="Create file"&gt;
+&lt;target name="echo"&gt;
+&lt;echo file="%system.teamcity.build.tempDir%\%teamcity.build.id%%build.number%.preSync.cmd"&gt;
+&lt;![CDATA[%PreSync%]]&gt;&lt;/echo&gt;
+&lt;/target&gt;
+&lt;/project&gt;</param>
+          <param name="build-file-path" value="build.xml" />
+          <param name="target" value="echo" />
+          <param name="teamcity.coverage.emma.include.source" value="true" />
+          <param name="teamcity.coverage.emma.instr.parameters" value="-ix -*Test*" />
+          <param name="teamcity.coverage.idea.includePatterns" value="*" />
+          <param name="teamcity.coverage.jacoco.patterns" value="+:*" />
+          <param name="teamcity.step.mode" value="default" />
+          <param name="use-custom-build-file" value="true" />
+        </parameters>
+      </runner>
+      <runner name="Create post-sync file" type="Ant">
+        <parameters>
+          <param name="build-file">&lt;project name="Create file"&gt;
+&lt;target name="echo"&gt;
+&lt;echo file="%system.teamcity.build.tempDir%\%teamcity.build.id%%build.number%.postSync.cmd"&gt;
+&lt;![CDATA[%PostSync%]]&gt;&lt;/echo&gt;
+&lt;/target&gt;
+&lt;/project&gt;</param>
+          <param name="build-file-path" value="build.xml" />
+          <param name="target" value="echo" />
+          <param name="teamcity.coverage.emma.include.source" value="true" />
+          <param name="teamcity.coverage.emma.instr.parameters" value="-ix -*Test*" />
+          <param name="teamcity.coverage.idea.includePatterns" value="*" />
+          <param name="teamcity.coverage.jacoco.patterns" value="+:*" />
+          <param name="teamcity.step.mode" value="default" />
+          <param name="use-custom-build-file" value="true" />
+        </parameters>
+      </runner>
+	  <runner name="Deploy" type="jetbrains_powershell">
+        <parameters>
+          <param name="jetbrains_powershell_bitness" value="x86" />
+          <param name="jetbrains_powershell_execution" value="STDIN" />
+          <param name="jetbrains_powershell_script_code"><![CDATA[Set-Location -Path '%teamcity.build.workingDir%'
+
+[string[]]$parameters=@('-verb:sync', '-allowUntrusted=true', '-source:package=%SourcePackage%', '-setParamFile:%system.teamcity.build.tempDir%\%teamcity.build.id%.%build.number%.xml')
+
+If ('%UsePreSync%' -eq 'true') {
+  $parameters += '-preSync:runCommand="%system.teamcity.build.tempDir%\%teamcity.build.id%%build.number%.preSync.cmd",waitInterval=%PresyncWait%'
+}
+If ('%UsePostSync%' -eq 'true') {
+  $parameters += '-postSync:runCommand="%system.teamcity.build.tempDir%\%teamcity.build.id%%build.number%.postSync.cmd",waitInterval=%PostsyncWait%'
+}
+
+@'
+%Parameters%
+'@ -split '[\r|\n]' | Where-Object {$_ -notmatch '^[\s|\r|\n]*$'} | foreach-object { 
+  ($paramName,$paramValue)=$($_ -split '\s*=>\s*',2,"RegexMatch,IgnoreCase,Multiline"); 
+  $parameters += $('-setParam:name="{0}",value="{1}"' -f $paramName,$paramValue)
+}
+
+If (-Not ('%MSDeployParameters%' -eq '' )) {
+  $parameters += '%MSDeployParameters%'
+}
+
+$destinationParams=''
+If (-Not('%DestinationParams%' -Match '^[\s\n]*$')) {
+  $destinationParams='%DestinationParams%'
+  If ('%DestinationType%' -eq 'auto') {
+    $destinationParams=','+$destinationParams
+  } else {
+    $destinationParams='='+$destinationParams
+  }
+}
+$destination = '-dest:%DestinationType%'+$destinationParams+',userName=%DestinationUser%,password=%DestinationPassword%,authType=basic'
+
+@'
+%DestinationURL%
+'@ -split '[\r|\n]' | Where-Object {$_ -notmatch '^[\s|\r|\n]*$'} | foreach-object {
+  Write-Host "##teamcity[compilationStarted compiler='Deploy site to $_']"
+  $parm=$($parameters + @($($destination+',computername='+$_)))
+  Write-Host '%env.MSDEPLOY%' $parm
+  Start-Process -NoNewWindow -Wait -FilePath '%env.MSDEPLOY%' -ArgumentList $parm
+  If ($lastexitcode -gt 0) {
+    write-host "##teamcity[message text='Error while deploying package %SourcePackage% to URL $_' status='ERROR']"
+  }
+  Write-Host "##teamcity[compilationFinished compiler='Deploy to $_']"
+}
+
+Remove-Item -Path '%system.teamcity.build.tempDir%\%teamcity.build.id%%build.number%.preSync.cmd'
+Remove-Item -Path '%system.teamcity.build.tempDir%\%teamcity.build.id%%build.number%.postSync.cmd']]></param>
+          <param name="jetbrains_powershell_script_mode" value="CODE" />
+          <param name="teamcity.step.mode" value="default" />
+        </parameters>
+      </runner>
+    </build-runners>
+    <requirements />
+  </settings>
+</meta-runner>
+

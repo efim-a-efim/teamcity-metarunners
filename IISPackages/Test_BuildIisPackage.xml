@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<meta-runner name="Build IIS package">
+  <description>Build IIS package from sources</description>
+  <settings>
+    <parameters>
+      <param name="SourcePath" value="" spec="text description='Without project file name and |'\|' at the end' display='normal' label='Project directory' validationMode='not_empty'" />
+      <param name="ProjectFile" value="" spec="text description='Only file name' display='normal' label='Project file name' validationMode='not_empty'" />
+      <param name="DestPath" value="" spec="text description='Path, including file name' display='normal' label='Destination package' validationMode='not_empty'" />
+      <param name="system.Configuration" value="Release" spec="text description='Usually Debug, Release or custom' display='normal' label='Build configuration' validationMode='not_empty'" />
+      <param name="Parameters" value="" spec="text display='normal' label='Additional MSBuild parameters'" />
+    </parameters>
+    <build-runners>
+      <runner name="Build package" type="MSBuild">
+        <parameters>
+          <param name="build-file-path" value="%SourcePath%\%ProjectFile%" />
+          <param name="dotNetCoverage.NCover.HTMLReport.File.Sort" value="0" />
+          <param name="dotNetCoverage.NCover.HTMLReport.File.Type" value="1" />
+          <param name="dotNetCoverage.NCover.Reg" value="selected" />
+          <param name="dotNetCoverage.NCover.platformBitness" value="x86" />
+          <param name="dotNetCoverage.NCover.platformVersion" value="v2.0" />
+          <param name="dotNetCoverage.NCover3.Reg" value="selected" />
+          <param name="dotNetCoverage.NCover3.args" value="//ias .*" />
+          <param name="dotNetCoverage.NCover3.platformBitness" value="x86" />
+          <param name="dotNetCoverage.NCover3.platformVersion" value="v2.0" />
+          <param name="dotNetCoverage.NCover3.reporter.executable.args" value="//or FullCoverageReport:Html:{teamcity.report.path}" />
+          <param name="dotNetCoverage.PartCover.Reg" value="selected" />
+          <param name="dotNetCoverage.PartCover.includes" value="[*]*" />
+          <param name="dotNetCoverage.PartCover.platformBitness" value="x86" />
+          <param name="dotNetCoverage.PartCover.platformVersion" value="v2.0" />
+          <param name="msbuild_version" value="12.0" />
+          <param name="run-platform" value="x86" />
+          <param name="targets" value="Build" />
+          <param name="runnerArgs" value="%Parameters%" />
+          <param name="teamcity.step.mode" value="default" />
+          <param name="toolsVersion" value="12.0" />
+        </parameters>
+      </runner>
+      <runner name="Create package" type="simpleRunner">
+        <parameters>
+          <param name="script.content"><![CDATA[cd "%teamcity.build.workingDir%"
+@echo "##teamcity[compilationStarted compiler='Build package']"
+"%system.MSDeploy.BinaryPath%" -verb:sync ^
+-source:dirPath="%SourcePath%\bin\%system.Configuration%" ^
+-dest:package="%DestPath%"
+@echo "##teamcity[compilationFinished compiler='Build package']"]]></param>
+          <param name="teamcity.step.mode" value="default" />
+          <param name="use.custom.script" value="true" />
+        </parameters>
+      </runner>
+    </build-runners>
+    <requirements />
+  </settings>
+</meta-runner>
+

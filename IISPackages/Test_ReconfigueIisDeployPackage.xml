@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<meta-runner name="Reconfigue IIS package">
+  <description>Reconfigure IIS deployment package</description>
+  <settings>
+    <parameters>
+      <param name="SourcePackage" value="" spec="text display='normal' label='Source package' regexp='.*\.zip$' validationMessage='Please specify a valid ZIP file' validationMode='regex'" />
+      <param name="DestinationPackage" value="" spec="text display='normal' label='Destination package' regexp='.*\.zip$' validationMessage='Please specify ZIP file path' validationMode='regex'" />
+      <param name="ConfigurationContent" value="&lt;parameters /&gt;" spec="text description='XML format like setParameters or declareParameters file for MSDeploy' display='normal' label='Configuration for package' validationMode='not_empty'" />
+      <param name="SkipIfNotExists" value="true" spec="checkbox checkedValue='true' uncheckedValue='' display='normal' label='Skip non-existing package' description='If unchecked, error will be reported for non-existent package'" />
+      <param name="Parameters" value="" spec="text display='normal' label='Additional MSDeploy parameters'" />
+    </parameters>
+    <build-runners>
+      <runner name="" type="Ant">
+        <parameters>
+          <param name="build-file">&lt;project name="Create file"&gt;
+
+&lt;target name="echo"&gt;
+&lt;echo file="%system.teamcity.build.tempDir%\%teamcity.build.id%.%build.number%.xml"&gt;&lt;![CDATA[%ConfigurationContent%]]&gt;&lt;/echo&gt;
+&lt;/target&gt;
+
+&lt;/project&gt;</param>
+          <param name="build-file-path" value="build.xml" />
+          <param name="target" value="echo" />
+          <param name="teamcity.coverage.emma.include.source" value="true" />
+          <param name="teamcity.coverage.emma.instr.parameters" value="-ix -*Test*" />
+          <param name="teamcity.coverage.idea.includePatterns" value="*" />
+          <param name="teamcity.step.mode" value="default" />
+          <param name="use-custom-build-file" value="true" />
+        </parameters>
+      </runner>
+      <runner name="Reconfigure package" type="jetbrains_powershell">
+        <parameters>
+          <param name="jetbrains_powershell_bitness" value="x86" />
+          <param name="jetbrains_powershell_execution" value="PS1" />
+          <param name="jetbrains_powershell_script_code"><![CDATA[Set-Location -Path '%teamcity.build.workingDir%'
+
+If (-Not (Test-Path '%SourcePackage%')) {
+  Remove-Item -Path '%system.teamcity.build.tempDir%\%teamcity.build.id%.%build.number%.xml'
+  If ('%SkipIfNotExists%' -eq 'true') {
+    Write-Host "##teamcity[message text='Source package does not exist' status='WARNING']"
+    Exit 0
+  } Else {
+    Write-Host "##teamcity[message text='Source package does not exist' status='ERROR' errorDetails='Source package doesn't exist']"
+    Exit 1
+  }
+}
+
+[string]$appConfFile='%system.teamcity.build.tempDir%\%teamcity.build.id%.%build.number%.xml'
+[xml]$srcOutput = [xml]( &"%system.MSDeploy.BinaryPath%" -verb:getParameters -xml -source:package=%SourcePackage%)
+[xml]$src = [xml]$srcOutput.output.InnerXml
+if (Test-Path $appConfFile) {
+	[xml]$cfg = Get-Content $appConfFile
+	Foreach ($Node in $cfg.DocumentElement.ChildNodes) {
+	    $src.DocumentElement.AppendChild($src.ImportNode($Node, $true))
+	}
+}
+
+$src.Save('%system.teamcity.build.tempDir%\%teamcity.build.id%.%build.number%.xml')
+
+& "%system.MSDeploy.BinaryPath%" -verb:sync -source:package=%SourcePackage% -dest:package=%DestinationPackage% -declareParamFile:%system.teamcity.build.tempDir%\%teamcity.build.id%.%build.number%.xml %Parameters%
+
+Remove-Item -Path '%system.teamcity.build.tempDir%\%teamcity.build.id%.%build.number%.xml']]></param>
+          <param name="jetbrains_powershell_script_mode" value="CODE" />
+          <param name="teamcity.step.mode" value="default" />
+        </parameters>
+      </runner>
+    </build-runners>
+    <requirements />
+  </settings>
+</meta-runner>
+

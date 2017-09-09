@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<meta-runner name="Powershell (with System parameters)">
+  <description>Executes Powershell script with System parameters</description>
+  <settings>
+    <parameters>
+      <param name="meta_powershell_bitness" value="x86" spec="select data_1='x64' data_2='x86' description='Run Powershell in 32 or 64-bit mode' display='normal' label='Bitness:'" />
+      <param name="meta_powershell_errorToError" value="true" spec="select data_1='false' data_2='true' description='Specify how error output is processed' display='normal' label='Error Output:' label_1='warning' label_2='error'" />
+      <param name="meta_powershell_minVersion" value="4.0" spec="select data_1='1.0' data_2='2.0' data_3='3.0' data_4='4.0' description='Powershell version' display='normal' label='Version:'" />
+      <param name="meta_powershell_script_type" spec="select data_1='CODE' data_3='FILE' description='Whether to interpret Source as a file or as code' display='normal' label='Script:' label_1='Source code' label_3='File'" />
+      <param name="meta_powershell_script_code" spec="text label='Script source:' description='Enter contents of a Powershell script. TeamCity references will be replaced in the code'" />
+    </parameters>
+    <build-runners>
+      <runner name="" type="jetbrains_powershell">
+        <parameters>
+          <param name="jetbrains_powershell_bitness" value="%meta_powershell_bitness%" />
+          <param name="jetbrains_powershell_errorToError" value="%meta_powershell_errorToError%" />
+          <param name="jetbrains_powershell_execution" value="PS1" />
+          <param name="jetbrains_powershell_minVersion" value="%meta_powershell_minVersion%" />
+          <param name="jetbrains_powershell_script_code"><![CDATA[function EscapeServiceMessage ([string]$message) {
+    $message = $message.Replace("|", "||")
+    $message = $message.Replace("`n", "|n")
+    $message = $message.Replace("`r", "|r")
+    $message = $message.Replace("'", "|'")
+    $message = $message.Replace("[", "|[")
+    $message = $message.Replace("]", "|]")
+    $message
+}
+
+trap
+{
+    $message = EscapeServiceMessage $_
+    Write-Host "##teamcity[buildStatus status='FAILURE' text='$message']"
+}
+
+Write-Host "Attempting to set buffer width to 500 characters..." -NoNewline
+try {
+    $rawUI = (Get-Host).UI.RawUI
+    $m = $rawUI.MaxPhysicalWindowSize.Width
+    $rawUI.BufferSize = New-Object Management.Automation.Host.Size ([Math]::max($m, 500), $rawUI.BufferSize.Height)
+    $rawUI.WindowSize = New-Object Management.Automation.Host.Size ($m, $rawUI.WindowSize.Height)
+    Write-Host " Success"
+} catch {
+    Write-Host " Failed"
+}
+
+$scriptPath = '';
+$scriptContents = @'
+%meta_powershell_script_code%
+'@
+
+if ('%meta_powershell_script_type%' -eq 'CODE') {
+    $tempDir ='%system.teamcity.build.tempDir%'
+    $tempFile = [Guid]::NewGuid().ToString("n") + '.ps1'
+    $scriptPath = join-path -Path $tempDir -ChildPath $tempFile
+
+    Set-Content -LiteralPath $scriptPath -Value $scriptContents
+} else {
+    $scriptPath = $scriptContents;
+}
+
+Write-Host "Script: $scriptPath"
+$scriptInfo = Get-Command -Name $scriptPath
+
+$arguments = @{}
+
+if ($scriptInfo.Parameters -ne $null) {
+    # load system parameters from TeamCity
+    [xml]$doc = Get-Content -LiteralPath ($env:TEAMCITY_BUILD_PROPERTIES_FILE + '.xml') -Encoding UTF8
+    $parameters = $doc.properties.entry | ForEach-Object -Begin {$ret = @{}} -Process {$ret.Add($_.key, $_.InnerText)} -End {$ret}
+    
+    foreach ($param in $scriptInfo.Parameters.GetEnumerator()) {
+        if ($parameters.ContainsKey($param.Key)) {
+            $arguments.Add($param.Key, $parameters[$param.Key]);
+        }
+    }
+} else {
+    Write-Host "Failed to discover script parameters"
+Write-Error "test"
+}
+
+Write-Host "Arguments:"
+Write-Host ($arguments | Format-Table -AutoSize | Out-String)
+
+. $scriptPath @arguments]]></param>
+          <param name="jetbrains_powershell_script_mode" value="CODE" />
+          <param name="teamcity.step.mode" value="default" />
+        </parameters>
+      </runner>
+    </build-runners>
+    <requirements />
+  </settings>
+</meta-runner>
+
